@@ -6,6 +6,10 @@ import tensorflow as tf
 class MultilayerPerceptron(object):
 
     def __init__(self, layers, dropout=None):
+        """
+        :type layers: list
+        :type dropout: double
+        """
         self.layers = layers
         self.dropout = dropout
 

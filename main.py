@@ -1,7 +1,7 @@
 from sklearn.datasets import fetch_20newsgroups
 
-from text_manipulator import TextClassifier
 from ml_algorithm import MultilayerPerceptron
+from text_models.text_manipulator import TextClassifier
 
 
 def run():
@@ -27,7 +27,6 @@ def run():
     # Network Parameters
     layers = [
         n_input,
-        300,
         200,
         100,
         n_output
