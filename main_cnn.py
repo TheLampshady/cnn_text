@@ -1,6 +1,6 @@
 from sklearn.datasets import fetch_20newsgroups
 
-from ml_algorithm import MultilayerPerceptron
+from tensor_models.ml_algorithm import MultilayerPerceptron
 from text_models.text_manipulator import TextClassifier
 
 
