@@ -32,7 +32,7 @@ class TextCNN(object):
         pooled_outputs = []
         for i, filter_size in enumerate(filter_sizes):
             with tf.name_scope("conv-maxpool-%s" % filter_size):
-                # Convolution Layer
+                # Convolution Layer (Text has 1 channel)
                 filter_shape = [filter_size, embedding_size, 1, num_filters]
                 W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0.1, shape=[num_filters]), name="b")
@@ -41,17 +41,19 @@ class TextCNN(object):
                     W,
                     strides=[1, 1, 1, 1],
                     padding="VALID",
-                    name="conv")
+                    name="conv"
+                )
 
                 # Apply nonlinearity
-                h = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
+                activated = tf.nn.relu(tf.nn.bias_add(conv, b), name="relu")
                 # Max-pooling over the outputs
                 pooled = tf.nn.max_pool(
-                    h,
+                    activated,
                     ksize=[1, sequence_length - filter_size + 1, 1, 1],
                     strides=[1, 1, 1, 1],
                     padding='VALID',
-                    name="pool")
+                    name="pool"
+                )
                 pooled_outputs.append(pooled)
 
         # Combine all the pooled features

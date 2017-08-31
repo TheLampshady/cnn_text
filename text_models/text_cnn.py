@@ -18,7 +18,7 @@ class TextClassifier(object):
         y_shuffled = target[shuffle_indices]
 
         # Split train/test set
-        # TODO: This is very crude, should use cross-validation
+        # TODO: This is very crude, should use `1cross-validation
         dev_sample_index = -1 * int(sample_percent * float(len(target)))
         self.train_data, self.test_data = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
         self.train_target, self.test_target = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]

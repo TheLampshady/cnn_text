@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import datetime
-import numpy as np
 import os
 from os.path import basename, splitext
 
