@@ -41,8 +41,8 @@ def run():
     # ----- Data -------
     percent_test = 0.1
     print("Loading data...")
-    positive_data_file = "../data/rt-polaritydata/rt-polarity.pos"
-    negative_data_file = "../data/rt-polaritydata/rt-polarity.neg"
+    positive_data_file = "data/rt-polaritydata/rt-polarity.pos"
+    negative_data_file = "data/rt-polaritydata/rt-polarity.neg"
 
     data, target = data_helpers.load_data_and_labels(positive_data_file, negative_data_file)
     max_document_length = max([len(x.split(" ")) for x in data])
@@ -61,9 +61,7 @@ def run():
     train_data, test_data = x_shuffled[:dev_sample_index], x_shuffled[dev_sample_index:]
     train_target, test_target = y_shuffled[:dev_sample_index], y_shuffled[dev_sample_index:]
 
-
-
-    train_batch = build_batch(list(zip(train_data, test_data)))
+    train_batch = build_batch(list(zip(train_data, train_target)))
 
     # ------ Constants -------
 
@@ -99,7 +97,8 @@ def run():
     ]
 
     # channels = [1, 4, 8, 12]
-    channels = [1, 6, 12, 24]
+    # channels = [1, 6, 12, 24]
+    num_filters = 128
 
     # Always `1` for text
     # strides = [1, 2, 2]
@@ -109,7 +108,10 @@ def run():
     # Tensor Board Log
     logs_path = "tensor_log/%s/" % splitext(basename(__file__))[0]
 
-    fully_connecting_nodes = 200
+    fully_connecting_nodes = num_filters * len(filters)
+
+    # Target classifications for nodes
+    output_nodes = 2
 
     # Place holders
     X = tf.placeholder(tf.int32, [None, sequence_length], name="Input_PH")
@@ -131,21 +133,22 @@ def run():
     biases = []
     for i in range(len(filters)):
         with tf.name_scope('Layer'):
-            weight_shape = [filters[i], embedding_dim] + channels[i:i+2]
+            # weight_shape = [filters[i], embedding_dim] + channels[i:i+2]
+            weight_shape = [filters[i], embedding_dim, 1, num_filters]
             weights.append(weight_variable(weight_shape))
-            biases.append(bias_variable([weight_shape[-1:]]))
+            biases.append(bias_variable(weight_shape[-1:]))
 
     with tf.name_scope('Layer'):
-        WConnect = weight_variable([conv_nodes, fully_connecting_nodes])
-        BConnect = bias_variable([fully_connecting_nodes])
-
-    with tf.name_scope('Layer'):
-        WOutput = weight_variable([fully_connecting_nodes, output])
-        BOutput = bias_variable([output])
+        WOutput = weight_variable([fully_connecting_nodes, output_nodes])
+        BOutput = bias_variable([output_nodes])
 
     # ---------------- Operations ----------------
 
     # ------- Activation Function -------
+    """
+    This method creates 3 separate layers with different filter sizes that get concatenated.
+    Other networks have taking a layer results and fed them into the next layer.
+    """
     pooled_outputs = []
     for i in range(len(filters)):
         with tf.name_scope('Wx_plus_b'):
@@ -166,6 +169,13 @@ def run():
             # Todo same stride shape for conv2d and max_pool (stride_shape and stride_pool_shape)
             # Valid Padding dimension size: (input_size - filter_size + 1) / stride
             next_dim = sequence_length - filters[i] + 1
+
+            # Ksize reduces the conv dimensions by conv2d[0] - pool_shape[0] +1
+            # with strides: (conv2d[0] - pool_shape[0] +1) / stride[0]
+            # Example:  conv2d = [1, 8, 8, 2]
+            #           pool_shape = [1, 8, 1, 1]
+            #           stride_pool_shape = [1, 1, 4, 1]
+            # Result:   [1, 1, 2, 2]
             pool_shape = [1, next_dim, 1, 1]
             stride_pool_shape = [1, 1, 1, 1]
 
@@ -179,16 +189,17 @@ def run():
             # Todo Output is not cycled through next layer
             pooled_outputs.append(pooled)
 
+    # Combine all the pooled features
+    pool_results = tf.concat(pooled_outputs, 3)
+    pool_flat = tf.reshape(pool_results, [-1, fully_connecting_nodes])
 
-    YY = tf.reshape(Y, [-1, conv_nodes])
-    activations = tf.nn.relu(tf.matmul(YY, WConnect) + BConnect)
-    Y = tf.nn.dropout(activations, keep_prob)
+    fully_connected_dropout = tf.nn.dropout(pool_flat, keep_prob)
 
     # ------- Regression Functions -------
     with tf.name_scope('Wx_plus_b'):
-        logits = tf.matmul(Y, WOutput, name="Product") + BOutput
+        logits = tf.nn.xw_plus_b(fully_connected_dropout, WOutput, BOutput, name="Product")
         tf.summary.histogram('Pre_Activations', logits)
-    Y = tf.nn.softmax(logits, name="Output_Result")
+    predictions = tf.nn.softmax(logits, name="Output_Result")
 
     # ------- Loss Function -------
     with tf.name_scope('Loss'):
@@ -207,7 +218,7 @@ def run():
     with tf.name_scope('Accuracy'):
         with tf.name_scope('correct_prediction'):
             is_correct = tf.equal(
-                tf.argmax(Y, 1, name="Max_Result"),
+                tf.argmax(predictions, 1, name="Max_Result"),
                 tf.argmax(Y_, 1, name="Target")
             )
         with tf.name_scope('accuracy'):
@@ -233,55 +244,52 @@ def run():
     test_operations = [accuracy, loss, merged_summary_op]
     test_data = {X: test_data, Y_: test_target, keep_prob: 1.0, L: 0}
 
-    for batch in train_batch:
-        avg_cost = 0.
+    avg_cost = 0.
+    for step, batch in enumerate(train_batch):
 
-        for i in range(batch_total):
-            step = (batch_total * epoch) + i
+        # ----- Train step -----
+        batch_X, batch_Y = zip(*batch)
 
-            # ----- Train step -----
-            batch_X, batch_Y = zip(*batch)
+        learning_rate = lrmin + (lrmax - lrmin) * exp(-step / decay_speed)
+        train_data = {
+            X: batch_X,
+            Y_: batch_Y,
+            L: learning_rate,
+            keep_prob: keep_ratio
+        }
 
-            learning_rate = lrmin + (lrmax - lrmin) * exp(-step / decay_speed)
-            train_data = {
-                X: batch_X,
-                Y_: batch_Y,
-                L: learning_rate,
-                keep_prob: keep_ratio
-            }
+        # Record execution stats
+        if step % 100 == 99:
+            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+            run_metadata = tf.RunMetadata()
 
-            # Record execution stats
-            if step % 100 == 99:
-                run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-                run_metadata = tf.RunMetadata()
+            _, cross_loss, summary = sess.run(
+                train_operations,
+                feed_dict=train_data,
+                options=run_options,
+                run_metadata=run_metadata
+            )
 
-                _, cross_loss, summary = sess.run(
-                    train_operations,
-                    feed_dict=train_data,
-                    options=run_options,
-                    run_metadata=run_metadata
-                )
+        else:
+            _, cross_loss, summary = sess.run(
+                train_operations,
+                feed_dict=train_data
+            )
 
-            else:
-                _, cross_loss, summary = sess.run(
-                    train_operations,
-                    feed_dict=train_data
-                )
-
-            # ----- Test Step -----
-            if step % test_freq == 0:
-                acc, cross_loss, summary = sess.run(
-                    test_operations,
-                    feed_dict=test_data
-                )
-                test_writer.add_summary(summary, step)
-                print('Accuracy at step %s: %s' % (step, acc))
-
-            avg_cost += cross_loss / batch_total
-            train_writer.add_summary(summary, step)
-
-        # Display logs per epoch step
-        print("Epoch:", '%04d' % (epoch + 1), "cost=", "{:.9f}".format(avg_cost))
+        # ----- Test Step -----
+        if step % test_freq == 0:
+            acc, cross_loss, summary = sess.run(
+                test_operations,
+                feed_dict=test_data
+            )
+            test_writer.add_summary(summary, step)
+            print('Accuracy at step %s: %s' % (step, acc))
+    #
+    #     avg_cost += cross_loss / batch_total
+    #     train_writer.add_summary(summary, step)
+    #
+    # # Display logs per epoch step
+    # print("Epoch:", '%04d' % (epoch + 1), "cost=", "{:.9f}".format(avg_cost))
 
 
 if __name__ == "__main__":
