@@ -39,19 +39,23 @@ def run():
     _inputs = tf.placeholder(tf.float32, shape=[None, time_steps, element_size], name='inputs')
     y = tf.placeholder(tf.float32, shape=[None, num_classes], name='labels')
 
+    # TensorFlow built-in functions
+    rnn_cell = tf.contrib.rnn.BasicRNNCell(hidden_layer_size)
+    outputs, state = tf.nn.dynamic_rnn(rnn_cell, _inputs, dtype=tf.float32)
+
     # Weights and bias for input and hidden layer
-    with tf.name_scope('rnn_weights'):
-        with tf.name_scope("W_x"):
-            Wx = tf.Variable(tf.zeros([element_size, hidden_layer_size]))
-            variable_summaries(Wx)
-
-        with tf.name_scope("W_h"):
-            Wh = tf.Variable(tf.zeros([hidden_layer_size, hidden_layer_size]))
-            variable_summaries(Wh)
-
-        with tf.name_scope("Bias"):
-            b_rnn = tf.Variable(tf.zeros([hidden_layer_size]))
-            variable_summaries(b_rnn)
+    # with tf.name_scope('rnn_weights'):
+    #     with tf.name_scope("W_x"):
+    #         Wx = tf.Variable(tf.zeros([element_size, hidden_layer_size]))
+    #         variable_summaries(Wx)
+    #
+    #     with tf.name_scope("W_h"):
+    #         Wh = tf.Variable(tf.zeros([hidden_layer_size, hidden_layer_size]))
+    #         variable_summaries(Wh)
+    #
+    #     with tf.name_scope("Bias"):
+    #         b_rnn = tf.Variable(tf.zeros([hidden_layer_size]))
+    #         variable_summaries(b_rnn)
 
     # def rnn_step(previous_hidden_state, x):
     #     return tf.tanh(tf.matmul(previous_hidden_state, Wh) + tf.matmul(x, Wx) + b_rnn)
@@ -59,29 +63,29 @@ def run():
 
     # Processing inputs to work with scan function
     # Current input shape: (batch_size, time_steps, element_size)
-    processed_input = tf.transpose(_inputs, perm=[1, 0, 2])
-
-    # Current input shape now: (time_steps, batch_size, element_size)
-    initial_hidden = tf.zeros([batch_size, hidden_layer_size])
-
-    # Getting all state vectors across time
-    all_hidden_states = tf.scan(
-        lambda prev, x: tf.tanh(tf.matmul(prev, Wh) + tf.matmul(x, Wx) + b_rnn),
-        processed_input,
-        initializer=initial_hidden,
-        name='states'
-    )
+    # processed_input = tf.transpose(_inputs, perm=[1, 0, 2])
+    #
+    # # Current input shape now: (time_steps, batch_size, element_size)
+    # initial_hidden = tf.zeros([batch_size, hidden_layer_size])
+    #
+    # # Getting all state vectors across time
+    # all_hidden_states = tf.scan(
+    #     lambda prev, x: tf.tanh(tf.matmul(prev, Wh) + tf.matmul(x, Wx) + b_rnn),
+    #     processed_input,
+    #     initializer=initial_hidden,
+    #     name='states'
+    # )
 
     # Weights for output layers
     with tf.name_scope('linear_layer_weights') as scope:
-        with tf.name_scope("W_linear"):
-            Wl = tf.Variable(tf.truncated_normal(
+        with tf.name_scope("W_Linear"):
+            weights = tf.Variable(tf.truncated_normal(
                 [hidden_layer_size, num_classes],
                 mean=0, stddev=0.01))
-            variable_summaries(Wl)
-        with tf.name_scope("Bias_linear"):
-            bl = tf.Variable(tf.truncated_normal([num_classes], mean=0, stddev=.01))
-            variable_summaries(bl)
+            variable_summaries(weights)
+        with tf.name_scope("Bias_Linear"):
+            biases = tf.Variable(tf.truncated_normal([num_classes], mean=0, stddev=.01))
+            variable_summaries(biases)
 
     # Apply linear layer to state vector    
     # def get_linear_layer(hidden_state):
@@ -89,16 +93,18 @@ def run():
 
     with tf.name_scope('linear_layer_weights') as scope:
         # Iterate across time, apply linear layer to all RNN outputs
-        all_outputs = tf.map_fn(
-            lambda hidden_state: tf.matmul(hidden_state, Wl) + bl,
-            all_hidden_states
-        )
+        # all_outputs = tf.map_fn(
+        #     lambda hidden_state: tf.matmul(hidden_state, weights) + biases,
+        #     all_hidden_states
+        # )
         # Get last output    
-        output = all_outputs[-1]
-        tf.summary.histogram('outputs', output)
+        # output = all_outputs[-1]
+        last_rnn_output = outputs[:, -1, :]
+        logits = tf.matmul(last_rnn_output, weights) + biases
+        tf.summary.histogram('RNN_Output', logits)
 
     with tf.name_scope('cross_entropy'):
-        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=output, labels=y))
+        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y))
         tf.summary.scalar('cross_entropy', cross_entropy)
 
     with tf.name_scope('train'):
@@ -106,7 +112,8 @@ def run():
         train_step = tf.train.RMSPropOptimizer(0.001, 0.9).minimize(cross_entropy)
 
     with tf.name_scope('accuracy'):
-        correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(output, 1))
+        #Todo logits or final output
+        correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(logits, 1))
         accuracy = (tf.reduce_mean(tf.cast(correct_prediction, tf.float32))) * 100
         tf.summary.scalar('accuracy', accuracy)
 

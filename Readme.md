@@ -18,6 +18,7 @@ Install project reqs
 
 * [Text CNN and ML API Tutorial](https://medium.com/towards-data-science/how-to-do-text-classification-using-tensorflow-word-embeddings-and-cnn-edae13b3e575)
     * [Code](https://github.com/GoogleCloudPlatform/training-data-analyst/tree/master/blogs/textclassification)
+
 ## Text Generation
 * https://medium.com/towards-data-science/deep-learning-with-tensorflow-part-3-music-and-text-generation-8a3fbfdc5e9b
 
