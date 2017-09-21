@@ -41,6 +41,11 @@ class TextClassifier(object):
     def output_size(self):
         return self.train_target.shape[1]
 
+    @property
+    def index_word_map(self):
+        mapping = self.vocab_processor.vocabulary_._mapping
+        return dict((v, k) for k, v in mapping.items())
+
     def train_batch(self, batch_size=64, num_epochs=200, shuffle=True):
         """
         Generates a batch iterator for a dataset.

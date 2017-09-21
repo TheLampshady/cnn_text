@@ -9,6 +9,8 @@ import data_helpers
 from text_models.text_cnn import TextClassifier
 from tensor_models.ml_algorithm_cnn import TextCNN
 
+from tensor_functions import embedding_text, build_text_metadata
+
 
 # Parameters
 # ==================================================
@@ -95,20 +97,21 @@ with tf.Graph().as_default():
 
         # Train Summaries
         train_summary_op = tf.summary.merge([loss_summary, acc_summary, grad_summaries_merged])
-        train_summary_dir = os.path.join(logs_path, "summaries", "train")
+        train_summary_dir = os.path.join(logs_path, "train")
         train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
         # Dev summaries
         dev_summary_op = tf.summary.merge([loss_summary, acc_summary])
-        dev_summary_dir = os.path.join(logs_path, "summaries", "dev")
+        dev_summary_dir = os.path.join(logs_path, "dev")
         dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
 
         # Checkpoint directory. Tensorflow assumes this directory already exists so we need to create it
-        checkpoint_dir = os.path.abspath(os.path.join(logs_path, "checkpoints"))
-        checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        model_file = os.path.join(logs_path, "model.ckpt")
+
         saver = tf.train.Saver(tf.global_variables(), max_to_keep=FLAGS.num_checkpoints)
+        meta_file = build_text_metadata(text_classifier.index_word_map, logs_path)
+
+        embed_op = embedding_text(cnn.embedding, dev_summary_writer, meta_file)
 
         # Write vocabulary
         text_classifier.save(os.path.join(logs_path, "vocab"))
@@ -161,5 +164,7 @@ with tf.Graph().as_default():
                 dev_step(text_classifier.test_data, text_classifier.test_target, writer=dev_summary_writer)
                 print("")
             if current_step % FLAGS.checkpoint_every == 0:
-                path = saver.save(sess, checkpoint_prefix, global_step=current_step)
+                path = saver.save(sess, model_file, current_step)
                 print("Saved model checkpoint to {}\n".format(path))
+
+        # normalized_embeddings_matrix = sess.run(embed_op)
